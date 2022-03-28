@@ -9,9 +9,9 @@
 }
 
 :root {
-  --mainDark: #343a40;
+  --mainDark: #212429;
   --MainGrey: rgba(109, 109, 109);
   --mainLightGrey: rgba(172, 172, 172);
-  --mainWhite: #fff;
+  --mainWhite: #7c7f84;
   --mainBlue: #007bff;
 }
