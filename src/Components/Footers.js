@@ -77,7 +77,8 @@ class Footer extends Component {
               {/**Footer bottom*/}
               <div className="footer-bottom">
                 <p className="text-xs-center">
-                  &copy;{new Date().getFullYear()} Made by Marco Vinciguerra
+                  &copy;{new Date().getFullYear()} Made by Marco Vinciguerra.
+                  This site is cookie free 🍪
                 </p>
               </div>
             </div>
