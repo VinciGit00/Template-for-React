@@ -2,9 +2,9 @@
  * @fileoverview Prevent multiple component definition per file
  * @author Yannick Croissant
  */
+
 'use strict';
 
-const has = require('has');
 const Components = require('../util/Components');
 const docsUrl = require('../util/docsUrl');
 
@@ -21,6 +21,10 @@ module.exports = {
       url: docsUrl('no-multi-comp')
     },
 
+    messages: {
+      onlyOneComponent: 'Declare only one React component per file'
+    },
+
     schema: [{
       type: 'object',
       properties: {
@@ -33,11 +37,9 @@ module.exports = {
     }]
   },
 
-  create: Components.detect((context, components) => {
+  create: Components.detect((context, components, utils) => {
     const configuration = context.options[0] || {};
     const ignoreStateless = configuration.ignoreStateless || false;
-
-    const MULTI_COMP_MESSAGE = 'Declare only one React component per file';
 
     /**
      * Checks if the component is ignored
@@ -45,7 +47,12 @@ module.exports = {
      * @returns {Boolean} True if the component is ignored, false if not.
      */
     function isIgnored(component) {
-      return ignoreStateless && /Function/.test(component.node.type);
+      return (
+        ignoreStateless && (
+          /Function/.test(component.node.type)
+          || utils.isPragmaComponentWrapper(component.node)
+        )
+      );
     }
 
     // --------------------------------------------------------------------------
@@ -53,23 +60,21 @@ module.exports = {
     // --------------------------------------------------------------------------
 
     return {
-      'Program:exit': function() {
+      'Program:exit'() {
         if (components.length() <= 1) {
           return;
         }
 
         const list = components.list();
-        let i = 0;
 
-        for (const component in list) {
-          if (!has(list, component) || isIgnored(list[component]) || ++i === 1) {
-            continue;
+        Object.keys(list).filter((component) => !isIgnored(list[component])).forEach((component, i) => {
+          if (i >= 1) {
+            context.report({
+              node: list[component].node,
+              messageId: 'onlyOneComponent'
+            });
           }
-          context.report({
-            node: list[component].node,
-            message: MULTI_COMP_MESSAGE
-          });
-        }
+        });
       }
     };
   })

@@ -2,9 +2,9 @@
  * @fileoverview Prevent usage of setState
  * @author Mark Dalgleish
  */
+
 'use strict';
 
-const has = require('has');
 const Components = require('../util/Components');
 const docsUrl = require('../util/docsUrl');
 
@@ -20,6 +20,11 @@ module.exports = {
       recommended: false,
       url: docsUrl('no-set-state')
     },
+
+    messages: {
+      noSetState: 'Do not use setState'
+    },
+
     schema: []
   },
 
@@ -43,7 +48,7 @@ module.exports = {
         setStateUsage = component.setStateUsages[i];
         context.report({
           node: setStateUsage,
-          message: 'Do not use setState'
+          messageId: 'noSetState'
         });
       }
     }
@@ -54,32 +59,29 @@ module.exports = {
 
     return {
 
-      CallExpression: function(node) {
+      CallExpression(node) {
         const callee = node.callee;
         if (
-          callee.type !== 'MemberExpression' ||
-          callee.object.type !== 'ThisExpression' ||
-          callee.property.name !== 'setState'
+          callee.type !== 'MemberExpression'
+          || callee.object.type !== 'ThisExpression'
+          || callee.property.name !== 'setState'
         ) {
           return;
         }
         const component = components.get(utils.getParentComponent());
-        const setStateUsages = component && component.setStateUsages || [];
+        const setStateUsages = (component && component.setStateUsages) || [];
         setStateUsages.push(callee);
         components.set(node, {
           useSetState: true,
-          setStateUsages: setStateUsages
+          setStateUsages
         });
       },
 
-      'Program:exit': function() {
+      'Program:exit'() {
         const list = components.list();
-        for (const component in list) {
-          if (!has(list, component) || isValid(list[component])) {
-            continue;
-          }
+        Object.keys(list).filter((component) => !isValid(list[component])).forEach((component) => {
           reportSetStateUsages(list[component]);
-        }
+        });
       }
     };
   })

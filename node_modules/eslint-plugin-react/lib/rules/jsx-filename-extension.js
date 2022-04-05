@@ -2,6 +2,7 @@
  * @fileoverview Restrict file extensions that may contain JSX
  * @author Joe Lencioni
  */
+
 'use strict';
 
 const path = require('path');
@@ -12,6 +13,7 @@ const docsUrl = require('../util/docsUrl');
 // ------------------------------------------------------------------------------
 
 const DEFAULTS = {
+  allow: 'always',
   extensions: ['.jsx']
 };
 
@@ -28,9 +30,17 @@ module.exports = {
       url: docsUrl('jsx-filename-extension')
     },
 
+    messages: {
+      noJSXWithExtension: 'JSX not allowed in files with extension \'{{ext}}\'',
+      extensionOnlyForJSX: 'Only files containing JSX may use the extension \'{{ext}}\''
+    },
+
     schema: [{
       type: 'object',
       properties: {
+        allow: {
+          enum: ['always', 'as-needed']
+        },
         extensions: {
           type: 'array',
           items: {
@@ -42,49 +52,57 @@ module.exports = {
     }]
   },
 
-  create: function(context) {
-    function getExtensionsConfig() {
-      return context.options[0] && context.options[0].extensions || DEFAULTS.extensions;
+  create(context) {
+    const filename = context.getFilename();
+
+    let jsxNode;
+
+    if (filename === '<text>') {
+      // No need to traverse any nodes.
+      return {};
     }
 
-    let invalidExtension;
-    let invalidNode;
+    const allow = (context.options[0] && context.options[0].allow) || DEFAULTS.allow;
+    const allowedExtensions = (context.options[0] && context.options[0].extensions) || DEFAULTS.extensions;
+    const isAllowedExtension = allowedExtensions.some((extension) => filename.slice(-extension.length) === extension);
+
+    function handleJSX(node) {
+      if (!jsxNode) {
+        jsxNode = node;
+      }
+    }
 
     // --------------------------------------------------------------------------
     // Public
     // --------------------------------------------------------------------------
 
     return {
-      JSXElement: function(node) {
-        const filename = context.getFilename();
-        if (filename === '<text>') {
+      JSXElement: handleJSX,
+      JSXFragment: handleJSX,
+
+      'Program:exit'(node) {
+        if (jsxNode) {
+          if (!isAllowedExtension) {
+            context.report({
+              node: jsxNode,
+              messageId: 'noJSXWithExtension',
+              data: {
+                ext: path.extname(filename)
+              }
+            });
+          }
           return;
         }
 
-        if (invalidNode) {
-          return;
+        if (isAllowedExtension && allow === 'as-needed') {
+          context.report({
+            node,
+            messageId: 'extensionOnlyForJSX',
+            data: {
+              ext: path.extname(filename)
+            }
+          });
         }
-
-        const allowedExtensions = getExtensionsConfig();
-        const isAllowedExtension = allowedExtensions.some(extension => filename.slice(-extension.length) === extension);
-
-        if (isAllowedExtension) {
-          return;
-        }
-
-        invalidNode = node;
-        invalidExtension = path.extname(filename);
-      },
-
-      'Program:exit': function() {
-        if (!invalidNode) {
-          return;
-        }
-
-        context.report({
-          node: invalidNode,
-          message: `JSX not allowed in files with extension '${invalidExtension}'`
-        });
       }
     };
   }

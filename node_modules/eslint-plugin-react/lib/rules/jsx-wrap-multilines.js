@@ -2,10 +2,12 @@
  * @fileoverview Prevent missing parentheses around multilines JSX
  * @author Yannick Croissant
  */
+
 'use strict';
 
 const has = require('has');
 const docsUrl = require('../util/docsUrl');
+const jsxUtil = require('../util/jsx');
 
 // ------------------------------------------------------------------------------
 // Constants
@@ -21,9 +23,6 @@ const DEFAULTS = {
   prop: 'ignore'
 };
 
-const MISSING_PARENS = 'Missing parentheses around multilines JSX';
-const PARENS_NEW_LINES = 'Parentheses around JSX should be on separate lines';
-
 // ------------------------------------------------------------------------------
 // Rule Definition
 // ------------------------------------------------------------------------------
@@ -37,6 +36,11 @@ module.exports = {
       url: docsUrl('jsx-wrap-multilines')
     },
     fixable: 'code',
+
+    messages: {
+      missingParens: 'Missing parentheses around multilines JSX',
+      parensOnNewLines: 'Parentheses around JSX should be on separate lines'
+    },
 
     schema: [{
       type: 'object',
@@ -68,9 +72,7 @@ module.exports = {
     }]
   },
 
-  create: function(context) {
-    const sourceCode = context.getSourceCode();
-
+  create(context) {
     function getOption(type) {
       const userOptions = context.options[0] || {};
       if (has(userOptions, type)) {
@@ -85,31 +87,51 @@ module.exports = {
     }
 
     function isParenthesised(node) {
+      const sourceCode = context.getSourceCode();
       const previousToken = sourceCode.getTokenBefore(node);
       const nextToken = sourceCode.getTokenAfter(node);
 
-      return previousToken && nextToken &&
-        previousToken.value === '(' && previousToken.range[1] <= node.range[0] &&
-        nextToken.value === ')' && nextToken.range[0] >= node.range[1];
+      return previousToken && nextToken
+        && previousToken.value === '(' && previousToken.range[1] <= node.range[0]
+        && nextToken.value === ')' && nextToken.range[0] >= node.range[1];
     }
 
-    function needsNewLines(node) {
-      const previousToken = sourceCode.getTokenBefore(node);
-      const nextToken = sourceCode.getTokenAfter(node);
+    function needsOpeningNewLine(node) {
+      const previousToken = context.getSourceCode().getTokenBefore(node);
 
-      return isParenthesised(node) &&
-        previousToken.loc.end.line === node.loc.start.line &&
-        node.loc.end.line === nextToken.loc.end.line;
+      if (!isParenthesised(node)) {
+        return false;
+      }
+
+      if (previousToken.loc.end.line === node.loc.start.line) {
+        return true;
+      }
+
+      return false;
+    }
+
+    function needsClosingNewLine(node) {
+      const nextToken = context.getSourceCode().getTokenAfter(node);
+
+      if (!isParenthesised(node)) {
+        return false;
+      }
+
+      if (node.loc.end.line === nextToken.loc.end.line) {
+        return true;
+      }
+
+      return false;
     }
 
     function isMultilines(node) {
       return node.loc.start.line !== node.loc.end.line;
     }
 
-    function report(node, message, fix) {
+    function report(node, messageId, fix) {
       context.report({
         node,
-        message,
+        messageId,
         fix
       });
     }
@@ -122,35 +144,51 @@ module.exports = {
     }
 
     function check(node, type) {
-      if (!node || node.type !== 'JSXElement') {
+      if (!node || !jsxUtil.isJSX(node)) {
         return;
       }
 
+      const sourceCode = context.getSourceCode();
       const option = getOption(type);
 
       if ((option === true || option === 'parens') && !isParenthesised(node) && isMultilines(node)) {
-        report(node, MISSING_PARENS, fixer => fixer.replaceText(node, `(${sourceCode.getText(node)})`));
+        report(node, 'missingParens', (fixer) => fixer.replaceText(node, `(${sourceCode.getText(node)})`));
       }
 
       if (option === 'parens-new-line' && isMultilines(node)) {
         if (!isParenthesised(node)) {
           const tokenBefore = sourceCode.getTokenBefore(node, {includeComments: true});
           const tokenAfter = sourceCode.getTokenAfter(node, {includeComments: true});
-          if (tokenBefore.loc.end.line < node.loc.start.line) {
+          const start = node.loc.start;
+          if (tokenBefore.loc.end.line < start.line) {
             // Strip newline after operator if parens newline is specified
             report(
               node,
-              MISSING_PARENS,
-              fixer => fixer.replaceTextRange(
-                [tokenBefore.range[0], tokenAfter.range[0]],
-                `${trimTokenBeforeNewline(node, tokenBefore)}(\n${sourceCode.getText(node)}\n)`
+              'missingParens',
+              (fixer) => fixer.replaceTextRange(
+                [tokenBefore.range[0], tokenAfter && (tokenAfter.value === ';' || tokenAfter.value === '}') ? tokenAfter.range[0] : node.range[1]],
+                `${trimTokenBeforeNewline(node, tokenBefore)}(\n${start.column > 0 ? ' '.repeat(start.column) : ''}${sourceCode.getText(node)}\n${start.column > 0 ? ' '.repeat(start.column - 2) : ''})`
               )
             );
           } else {
-            report(node, MISSING_PARENS, fixer => fixer.replaceText(node, `(\n${sourceCode.getText(node)}\n)`));
+            report(node, 'missingParens', (fixer) => fixer.replaceText(node, `(\n${sourceCode.getText(node)}\n)`));
           }
-        } else if (needsNewLines(node)) {
-          report(node, PARENS_NEW_LINES, fixer => fixer.replaceText(node, `\n${sourceCode.getText(node)}\n`));
+        } else {
+          const needsOpening = needsOpeningNewLine(node);
+          const needsClosing = needsClosingNewLine(node);
+          if (needsOpening || needsClosing) {
+            report(node, 'parensOnNewLines', (fixer) => {
+              const text = sourceCode.getText(node);
+              let fixed = text;
+              if (needsOpening) {
+                fixed = `\n${fixed}`;
+              }
+              if (needsClosing) {
+                fixed = `${fixed}\n`;
+              }
+              return fixer.replaceText(node, fixed);
+            });
+          }
         }
       }
     }
@@ -161,7 +199,7 @@ module.exports = {
 
     return {
 
-      VariableDeclarator: function(node) {
+      VariableDeclarator(node) {
         const type = 'declaration';
         if (!isEnabled(type)) {
           return;
@@ -174,7 +212,7 @@ module.exports = {
         check(node.init, type);
       },
 
-      AssignmentExpression: function(node) {
+      AssignmentExpression(node) {
         const type = 'assignment';
         if (!isEnabled(type)) {
           return;
@@ -187,14 +225,14 @@ module.exports = {
         check(node.right, type);
       },
 
-      ReturnStatement: function(node) {
+      ReturnStatement(node) {
         const type = 'return';
         if (isEnabled(type)) {
           check(node.argument, type);
         }
       },
 
-      'ArrowFunctionExpression:exit': function(node) {
+      'ArrowFunctionExpression:exit': (node) => {
         const arrowBody = node.body;
         const type = 'arrow';
 
@@ -203,7 +241,7 @@ module.exports = {
         }
       },
 
-      ConditionalExpression: function(node) {
+      ConditionalExpression(node) {
         const type = 'condition';
         if (isEnabled(type)) {
           check(node.consequent, type);
@@ -211,14 +249,14 @@ module.exports = {
         }
       },
 
-      LogicalExpression: function(node) {
+      LogicalExpression(node) {
         const type = 'logical';
         if (isEnabled(type)) {
           check(node.right, type);
         }
       },
 
-      JSXAttribute: function(node) {
+      JSXAttribute(node) {
         const type = 'prop';
         if (isEnabled(type) && node.value && node.value.type === 'JSXExpressionContainer') {
           check(node.value.expression, type);
