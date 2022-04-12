@@ -1,18 +1,12 @@
 import React, { Component } from "react";
-import {
-  Navbar,
-  NavDropdown,
-  Form,
-  FormControl,
-  Button,
-  Nav,
-} from "react-bootstrap";
+import { Navbar, Nav } from "react-bootstrap";
 import logo from "../logo.svg";
 import { BrowserRouter as Router, Switch, Route, Link } from "react-router-dom";
 
 import Home from "./Home";
 import Contact from "./Contact";
 import About from "./About";
+import Shop from "./Shop";
 
 export default class NavbarComp extends Component {
   render() {
@@ -35,6 +29,9 @@ export default class NavbarComp extends Component {
                 <Nav.Link as={Link} to="/about">
                   About
                 </Nav.Link>
+                <Nav.Link as={Link} to="/shop">
+                  Products
+                </Nav.Link>
                 <Nav.Link as={Link} to="/contact">
                   Contact
                 </Nav.Link>
@@ -49,6 +46,9 @@ export default class NavbarComp extends Component {
             </Route>
             <Route path="/contact">
               <Contact />
+            </Route>
+            <Route path="/shop">
+              <Shop />
             </Route>
             <Route path="/">
               <Home />
